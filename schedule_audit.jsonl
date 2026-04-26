@@ -1,0 +1,21 @@
+{"event": "plan_generated", "timestamp": "2026-04-25T22:12:16.468113", "owner": "Emily", "pet": "Daisy", "method": "deterministic", "plan_summary": {"total_duration": 100, "task_count": 4, "conflicts": 0}}
+{"event": "plan_validated", "timestamp": "2026-04-25T22:12:16.468283", "owner": "Emily", "pet": "Daisy", "validation": {"is_valid": true, "severity": "info", "errors": [], "warnings": [], "checks_passed": 6, "checks_total": 6, "timestamp": "2026-04-25T22:12:16.468277"}}
+{"event": "plan_approved", "timestamp": "2026-04-25T22:12:16.468374", "owner": "Emily", "pet": "Daisy", "plan_id": "f0ab567a"}
+{"event": "plan_generated", "timestamp": "2026-04-25T22:12:16.494968", "owner": "Emily", "pet": "Daisy", "method": "deterministic", "plan_summary": {"total_duration": 100, "task_count": 4, "conflicts": 0}}
+{"event": "plan_rejected", "timestamp": "2026-04-25T22:12:16.495104", "owner": "Emily", "pet": "Daisy", "reason": "Start time too late"}
+{"event": "plan_generated", "timestamp": "2026-04-25T22:12:16.495177", "owner": "Emily", "pet": "Daisy", "method": "deterministic", "plan_summary": {"total_duration": 100, "task_count": 4, "conflicts": 0}}
+{"event": "plan_approved", "timestamp": "2026-04-25T22:12:16.495222", "owner": "Emily", "pet": "Daisy", "plan_id": "787ed2bb"}
+{"event": "plan_generated", "timestamp": "2026-04-25T22:13:01.188870", "owner": "Emily", "pet": "Daisy", "method": "deterministic", "plan_summary": {"total_duration": 100, "task_count": 4, "conflicts": 0}}
+{"event": "plan_validated", "timestamp": "2026-04-25T22:13:01.189054", "owner": "Emily", "pet": "Daisy", "validation": {"is_valid": true, "severity": "info", "errors": [], "warnings": [], "checks_passed": 6, "checks_total": 6, "timestamp": "2026-04-25T22:13:01.189047"}}
+{"event": "plan_approved", "timestamp": "2026-04-25T22:13:01.189169", "owner": "Emily", "pet": "Daisy", "plan_id": "2bb5b610"}
+{"event": "plan_generated", "timestamp": "2026-04-25T22:13:01.190718", "owner": "Emily", "pet": "Daisy", "method": "deterministic", "plan_summary": {"total_duration": 100, "task_count": 4, "conflicts": 0}}
+{"event": "plan_rejected", "timestamp": "2026-04-25T22:13:01.190827", "owner": "Emily", "pet": "Daisy", "reason": "Start time too late"}
+{"event": "plan_generated", "timestamp": "2026-04-25T22:13:01.190897", "owner": "Emily", "pet": "Daisy", "method": "deterministic", "plan_summary": {"total_duration": 100, "task_count": 4, "conflicts": 0}}
+{"event": "plan_approved", "timestamp": "2026-04-25T22:13:01.190940", "owner": "Emily", "pet": "Daisy", "plan_id": "2bb2c3ed"}
+{"event": "plan_generated", "timestamp": "2026-04-25T22:19:04.196674", "owner": "Emily", "pet": "Daisy", "method": "deterministic", "plan_summary": {"total_duration": 100, "task_count": 4, "conflicts": 0}}
+{"event": "plan_validated", "timestamp": "2026-04-25T22:19:04.197032", "owner": "Emily", "pet": "Daisy", "validation": {"is_valid": true, "severity": "info", "errors": [], "warnings": [], "checks_passed": 6, "checks_total": 6, "timestamp": "2026-04-25T22:19:04.197014"}}
+{"event": "plan_approved", "timestamp": "2026-04-25T22:19:04.197230", "owner": "Emily", "pet": "Daisy", "plan_id": "9b1074a1"}
+{"event": "plan_generated", "timestamp": "2026-04-25T22:19:04.199906", "owner": "Emily", "pet": "Daisy", "method": "deterministic", "plan_summary": {"total_duration": 100, "task_count": 4, "conflicts": 0}}
+{"event": "plan_rejected", "timestamp": "2026-04-25T22:19:04.200068", "owner": "Emily", "pet": "Daisy", "reason": "Start time too late"}
+{"event": "plan_generated", "timestamp": "2026-04-25T22:19:04.200190", "owner": "Emily", "pet": "Daisy", "method": "deterministic", "plan_summary": {"total_duration": 100, "task_count": 4, "conflicts": 0}}
+{"event": "plan_approved", "timestamp": "2026-04-25T22:19:04.200252", "owner": "Emily", "pet": "Daisy", "plan_id": "91b0b720"}
