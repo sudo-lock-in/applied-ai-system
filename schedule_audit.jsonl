@@ -19,3 +19,6 @@
 {"event": "plan_rejected", "timestamp": "2026-04-25T22:19:04.200068", "owner": "Emily", "pet": "Daisy", "reason": "Start time too late"}
 {"event": "plan_generated", "timestamp": "2026-04-25T22:19:04.200190", "owner": "Emily", "pet": "Daisy", "method": "deterministic", "plan_summary": {"total_duration": 100, "task_count": 4, "conflicts": 0}}
 {"event": "plan_approved", "timestamp": "2026-04-25T22:19:04.200252", "owner": "Emily", "pet": "Daisy", "plan_id": "91b0b720"}
+{"event": "plan_generated", "timestamp": "2026-04-25T22:45:37.671315", "owner": "Jordan", "pet": "Mochi", "method": "ai_agent", "plan_summary": {"total_duration": 20, "task_count": 1, "conflicts": 0}}
+{"event": "plan_validated", "timestamp": "2026-04-25T22:45:37.674870", "owner": "Jordan", "pet": "Mochi", "validation": {"is_valid": true, "severity": "info", "errors": [], "warnings": [], "checks_passed": 6, "checks_total": 6, "timestamp": "2026-04-25T22:45:37.658990"}}
+{"event": "plan_approved", "timestamp": "2026-04-25T22:45:37.679290", "owner": "Jordan", "pet": "Mochi", "plan_id": "d1b4d5b2"}

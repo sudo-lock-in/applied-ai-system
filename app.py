@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 from pawpal_system import CareTask, Pet, Owner, Scheduler
+from agent import SchedulingAgent, SchedulePlan
+from reliability import PlanValidator, AuditLogger, HumanReviewCheckpoint
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="wide")
 
@@ -14,7 +16,6 @@ Welcome to **PawPal+** – Your intelligent pet care planning assistant!
 This app helps you organize and optimize pet care tasks based on time availability, priority, and pet needs.
 """
 )
-
 st.divider()
 
 st.subheader("👤 Owner & Pet Setup")
@@ -36,11 +37,14 @@ if "schedulers" not in st.session_state:
 owner = st.session_state.owner
 
 # Owner configuration
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 with col1:
     owner.name = st.text_input("Owner name", value=owner.name)
 with col2:
     owner.available_minutes = st.number_input("Available minutes", value=owner.available_minutes, min_value=15, max_value=480)
+with col3:
+    preferred_time = st.time_input("Preferred start time", value=datetime.strptime(owner.preferred_start_time, "%H:%M").time())
+    owner.preferred_start_time = preferred_time.strftime("%H:%M")
 
 st.markdown("### Add Pet")
 col1, col2 = st.columns(2)
@@ -345,18 +349,147 @@ if st.session_state.pets:
                         st.warning(warning)
             else:
                 st.success("✅ **No scheduling conflicts!** Your schedule looks good.")
-                
-                # Show available time slots
-                if scheduler.get_tasks():
-                    with st.expander("💡 Available Time Slots"):
-                        try:
-                            suggested_time = scheduler.suggest_next_available_time(duration_minutes=30, start_from="08:00")
-                            if suggested_time:
-                                st.success(f"✅ Next available slot for 30-min task: **{suggested_time}**")
-                        except Exception as e:
-                            st.info(f"ℹ️ Time slot suggestion unavailable")
 else:
     st.info("👆 Add a pet and tasks to build a schedule!")
+
+st.divider()
+
+st.subheader("🤖 AI-Powered Schedule Generation")
+
+if st.session_state.pets:
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        selected_pet_ai = st.selectbox(
+            "Generate AI schedule for:",
+            [p.name for p in st.session_state.pets],
+            key="ai_schedule_selector"
+        )
+    
+    with col2:
+        st.write("")
+        st.write("")
+        if st.button("🚀 Generate Schedule", use_container_width=True):
+            pet_for_ai = owner.find_pet_by_name(selected_pet_ai)
+            scheduler_ai = st.session_state.schedulers[selected_pet_ai]
+            
+            if scheduler_ai.get_tasks():
+                # Generate schedule using agent
+                agent = SchedulingAgent()
+                start_time = owner.preferred_start_time
+                end_time_minutes = (datetime.strptime(start_time, "%H:%M") + timedelta(minutes=owner.available_minutes)).time()
+                end_time = end_time_minutes.strftime("%H:%M")
+                
+                plan = agent.generate_schedule(owner, pet_for_ai, scheduler_ai, start_time=start_time, end_time=end_time)
+                
+                # Store in session
+                st.session_state.current_plan = plan
+                st.session_state.current_scheduler_ai = scheduler_ai
+                st.session_state.current_pet_ai = pet_for_ai
+                st.success("✅ Schedule generated!")
+            else:
+                st.warning("⚠️ Add tasks to the pet first!")
+    
+    # Display generated plan if it exists
+    if "current_plan" in st.session_state:
+        plan = st.session_state.current_plan
+        scheduler_ai = st.session_state.current_scheduler_ai
+        pet_for_ai = st.session_state.current_pet_ai
+        
+        st.divider()
+        st.markdown("## 📋 Generated Schedule")
+        
+        # Display explanation
+        with st.expander("💭 AI Reasoning", expanded=True):
+            st.markdown(plan.explanation)
+        
+        # Show scheduled tasks in a table
+        if plan.scheduled_tasks:
+            st.markdown("**Scheduled Tasks:**")
+            task_df = pd.DataFrame(plan.scheduled_tasks)
+            st.dataframe(task_df, use_container_width=True, hide_index=True)
+            
+            st.metric("⏱️ Total Duration", f"{plan.total_duration} min / {owner.available_minutes} min")
+        
+        # Validation section
+        st.divider()
+        st.markdown("## ✅ Plan Validation")
+        
+        validator = PlanValidator()
+        validation = validator.validate_plan(plan, owner, scheduler_ai)
+        
+        # Show validation status
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if validation.is_valid:
+                st.success(f"✅ Valid Plan")
+            else:
+                st.error(f"❌ Invalid Plan")
+        with col2:
+            st.info(f"Checks: {validation.checks_passed}/{validation.checks_total}")
+        with col3:
+            st.write(f"Severity: {validation.severity.upper()}")
+        
+        # Show validation summary
+        with st.expander("📊 Validation Details"):
+            st.markdown(validation.summary())
+            
+            if validation.errors:
+                st.markdown("**Critical Issues:**")
+                for error in validation.errors:
+                    st.error(f"🚨 {error}")
+            
+            if validation.warnings:
+                st.markdown("**Warnings:**")
+                for warning in validation.warnings:
+                    st.warning(f"⚠️ {warning}")
+        
+        # Human Review Checkpoint
+        st.divider()
+        st.markdown("## 👤 Human Review & Approval")
+        
+        checkpoint = HumanReviewCheckpoint()
+        review_prompt = checkpoint.create_review_prompt(plan, validation)
+        
+        with st.expander("📝 Review Checklist"):
+            st.markdown(review_prompt)
+        
+        # Approval buttons
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("✅ Approve Plan", use_container_width=True, key="approve_plan"):
+                # Initialize logger if needed
+                if "audit_logger" not in st.session_state:
+                    st.session_state.audit_logger = AuditLogger()
+                
+                logger = st.session_state.audit_logger
+                logger.log_plan_generated(owner, pet_for_ai, plan, method="ai_agent")
+                logger.log_plan_validated(owner, pet_for_ai, validation)
+                checkpoint.record_feedback(owner, pet_for_ai, plan, "approve", "Approved by user")
+                logger.log_plan_approved(owner, pet_for_ai, plan)
+                
+                st.success("✅ Plan approved! Schedule saved.")
+                st.balloons()
+        
+        with col2:
+            if st.button("❌ Reject Plan", use_container_width=True, key="reject_plan"):
+                if "audit_logger" not in st.session_state:
+                    st.session_state.audit_logger = AuditLogger()
+                
+                logger = st.session_state.audit_logger
+                checkpoint.record_feedback(owner, pet_for_ai, plan, "reject", "Rejected by user - preferences not met")
+                logger.log_plan_rejected(owner, pet_for_ai, "Rejected by user")
+                
+                st.info("↩️ Plan rejected. Adjust constraints and try again.")
+                del st.session_state.current_plan
+        
+        with col3:
+            if st.button("🔄 Regenerate", use_container_width=True, key="regenerate_plan"):
+                del st.session_state.current_plan
+                st.rerun()
+else:
+    st.info("👆 Add a pet and tasks first to generate a schedule.")
 
 st.divider()
 
