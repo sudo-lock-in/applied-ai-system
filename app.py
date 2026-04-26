@@ -115,7 +115,9 @@ with main_tabs[0]:
                 if pet:
                     scheduler = st.session_state.schedulers[selected_pet]
                     scheduler.add_task(new_task)
-                    st.success(f"✓ Task '{task_title}' added to {selected_pet}!")
+                    st.success(f"✅ Task '{task_title}' successfully added to {selected_pet}!")
+                    import time
+                    time.sleep(0.5)
                     st.rerun()
             except ValueError as e:
                 st.error(f"✗ Error: {e}")
@@ -166,11 +168,13 @@ with main_tabs[1]:
                 with col1:
                     st.metric("📋 Total", len(scheduler.get_tasks()))
                 with col2:
-                    st.metric("⏳ Pending", len(scheduler.get_pending_tasks()))
+                    pending_count = len([t for t in scheduler.get_tasks() if not t.is_completed and not t.scheduled_time])
+                    st.metric("⏳ Pending", pending_count)
                 with col3:
                     st.metric("✅ Completed", len(scheduler.get_completed_tasks()))
                 with col4:
-                    st.metric("⏱️ Duration", f"{scheduler.calculate_total_duration()} min")
+                    scheduled_count = len([t for t in scheduler.get_tasks() if t.scheduled_time and not t.is_completed])
+                    st.metric("📅 Scheduled", scheduled_count)
             else:
                 st.info("No tasks yet. Add a task to get started!")
         
@@ -182,6 +186,12 @@ with main_tabs[1]:
                 
                 table_data = []
                 for i, task in enumerate(duration_sorted, 1):
+                    if task.is_completed:
+                        status = "✅ Completed"
+                    elif task.scheduled_time:
+                        status = f"📅 Scheduled @ {task.scheduled_time}"
+                    else:
+                        status = "⏳ Pending"
                     priority_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(task.priority, "⚪")
                     table_data.append({
                         "#": i,
@@ -189,6 +199,7 @@ with main_tabs[1]:
                         "Task": task.title,
                         "Priority": f"{priority_emoji} {task.priority.upper()}",
                         "Category": task.category,
+                        "Status": status,
                         "Frequency": task.frequency.upper()
                     })
                 
@@ -224,9 +235,10 @@ with main_tabs[1]:
                 
                 with col2:
                     st.markdown("**Task Status**")
-                    pending = len(scheduler.get_pending_tasks())
+                    pending = len([t for t in scheduler.get_tasks() if not t.is_completed and not t.scheduled_time])
+                    scheduled = len([t for t in scheduler.get_tasks() if t.scheduled_time and not t.is_completed])
                     completed = len(scheduler.get_completed_tasks())
-                    status_counts = pd.Series({"⏳ Pending": pending, "✅ Completed": completed})
+                    status_counts = pd.Series({"⏳ Pending": pending, "📅 Scheduled": scheduled, "✅ Completed": completed})
                     st.bar_chart(status_counts)
                 
                 with col3:
@@ -413,7 +425,7 @@ with main_tabs[2]:
             with col2:
                 st.info(f"Checks: {validation.checks_passed}/{validation.checks_total}")
             with col3:
-                st.write(f"Severity: {validation.severity.upper()}")
+                st.write("")
             
             with st.expander("📊 Validation Details"):
                 st.markdown(validation.summary())
@@ -432,36 +444,52 @@ with main_tabs[2]:
             st.markdown("## 👤 Human Review & Approval")
             
             checkpoint = HumanReviewCheckpoint()
-            review_prompt = checkpoint.create_review_prompt(plan, validation)
             
             with st.expander("📝 Review Checklist"):
-                st.markdown(review_prompt)
+                st.markdown("## ✅ Validation Status")
+                st.markdown(validation.summary())
+                st.markdown("---")
+                st.markdown("""
+## ❓ Questions for You:
+1. Does this schedule work for your lifestyle?
+2. Are the start times realistic?
+3. Any tasks you'd like to reorder or adjust?
+4. Any concerns about pet welfare?
+""")
             
             col1, col2, col3 = st.columns(3)
             
             with col1:
                 if st.button("✅ Approve Plan", use_container_width=True, key="approve_plan"):
-                    if "audit_logger" not in st.session_state:
-                        st.session_state.audit_logger = AuditLogger()
-                    
-                    logger = st.session_state.audit_logger
-                    logger.log_plan_generated(owner, pet_for_ai, plan, method="ai_agent")
-                    logger.log_plan_validated(owner, pet_for_ai, validation)
-                    checkpoint.record_feedback(owner, pet_for_ai, plan, "approve", "Approved by user")
-                    logger.log_plan_approved(owner, pet_for_ai, plan)
-                    
-                    # Update tasks with scheduled times from the plan
-                    for scheduled_task_info in plan.scheduled_tasks:
-                        task_title = scheduled_task_info.get("Task")
-                        scheduled_time = scheduled_task_info.get("Time")
+                    try:
+                        if "audit_logger" not in st.session_state:
+                            st.session_state.audit_logger = AuditLogger()
                         
-                        # Find and update the actual task object
-                        for task in scheduler_ai.get_tasks():
-                            if task.title == task_title and scheduled_time:
-                                task.scheduled_time = scheduled_time
-                    
-                    st.success("✅ Plan approved! Schedule saved.")
-                    st.balloons()
+                        logger = st.session_state.audit_logger
+                        logger.log_plan_generated(owner, pet_for_ai, plan, method="ai_agent")
+                        logger.log_plan_validated(owner, pet_for_ai, validation)
+                        checkpoint.record_feedback(owner, pet_for_ai, plan, "approve", "Approved by user")
+                        logger.log_plan_approved(owner, pet_for_ai, plan)
+                        
+                        # Update tasks with scheduled times from the plan
+                        if plan.scheduled_tasks and len(plan.scheduled_tasks) > 0:
+                            for scheduled_task_info in plan.scheduled_tasks:
+                                task_title = scheduled_task_info.get("Task")
+                                scheduled_time = scheduled_task_info.get("Time")
+                                
+                                # Find and update the actual task object in the scheduler
+                                for task in scheduler_ai.get_tasks():
+                                    if task.title == task_title and scheduled_time:
+                                        task.scheduled_time = scheduled_time
+                                        break
+                        
+                        st.success("✅ Plan approved! Tasks have been scheduled and saved.")
+                        st.balloons()
+                        import time
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error approving plan: {str(e)}")
             
             with col2:
                 if st.button("❌ Reject Plan", use_container_width=True, key="reject_plan"):
@@ -474,6 +502,7 @@ with main_tabs[2]:
                     
                     st.info("↩️ Plan rejected. Adjust constraints and try again.")
                     del st.session_state.current_plan
+                    st.rerun()
             
             with col3:
                 if st.button("🔄 Regenerate", use_container_width=True, key="regenerate_plan"):
