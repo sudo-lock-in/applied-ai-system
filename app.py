@@ -286,18 +286,29 @@ with main_tabs[1]:
             tasks = manage_scheduler.get_tasks()
             
             for i, task in enumerate(tasks):
-                col1, col2, col3_edit = st.columns([2, 1, 1])
+                col1, col2, col3_edit, col4_delete = st.columns([2, 1, 1, 1])
                 
                 with col1:
                     priority_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(task.priority, "⚪")
-                    st.write(f"{priority_emoji} **{task.title}** ({task.duration_minutes}m) - {task.category}")
+                    completion_emoji = "✅" if task.is_completed else "⏳"
+                    st.write(f"{completion_emoji} {priority_emoji} **{task.title}** ({task.duration_minutes}m) - {task.category}")
                 
                 with col2:
+                    if not task.is_completed:
+                        if st.button("✓ Complete", key=f"complete_{i}", use_container_width=True):
+                            task.mark_completed()
+                            st.rerun()
+                    else:
+                        if st.button("↩ Undo", key=f"undo_{i}", use_container_width=True):
+                            task.mark_incomplete()
+                            st.rerun()
+                
+                with col3_edit:
                     if st.button("✏️ Edit", key=f"edit_{i}", use_container_width=True):
                         st.session_state[f"editing_{i}"] = True
                         st.rerun()
                 
-                with col3_edit:
+                with col4_delete:
                     if st.button("🗑️ Delete", key=f"delete_{i}", use_container_width=True):
                         manage_scheduler.remove_task(task)
                         st.rerun()
