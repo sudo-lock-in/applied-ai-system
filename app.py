@@ -213,9 +213,6 @@ with main_tabs[1]:
             checkpoint = HumanReviewCheckpoint()
             
             with st.expander("📝 Review Checklist"):
-                st.markdown("## ✅ Validation Status")
-                st.markdown(validation.summary())
-                st.markdown("---")
                 st.markdown("""
 ## ❓ Questions for You:
 1. Does this schedule work for your lifestyle?
