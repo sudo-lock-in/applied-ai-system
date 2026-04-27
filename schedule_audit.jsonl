@@ -127,3 +127,10 @@
 {"event": "plan_generated", "timestamp": "2026-04-27T01:25:41.656541", "owner": "Jordan", "pet": "Mochi", "method": "ai_agent", "plan_summary": {"total_duration": 60, "task_count": 3, "conflicts": 0}}
 {"event": "plan_validated", "timestamp": "2026-04-27T01:25:41.660656", "owner": "Jordan", "pet": "Mochi", "validation": {"is_valid": true, "severity": "info", "errors": [], "warnings": [], "checks_passed": 6, "checks_total": 6, "timestamp": "2026-04-27T01:25:41.642528"}}
 {"event": "plan_approved", "timestamp": "2026-04-27T01:25:41.660981", "owner": "Jordan", "pet": "Mochi", "plan_id": "c386e455"}
+{"event": "plan_generated", "timestamp": "2026-04-27T01:37:25.028445", "owner": "Alice", "pet": "Max", "method": "ai_agent", "plan_summary": {"total_duration": 45, "task_count": 3, "conflicts": 0}}
+{"event": "plan_validated", "timestamp": "2026-04-27T01:37:25.031378", "owner": "Alice", "pet": "Max", "validation": {"is_valid": true, "severity": "info", "errors": [], "warnings": [], "checks_passed": 6, "checks_total": 6, "timestamp": "2026-04-27T01:37:25.018400"}}
+{"event": "plan_approved", "timestamp": "2026-04-27T01:37:25.032988", "owner": "Alice", "pet": "Max", "plan_id": "ceadc6fb"}
+{"event": "plan_rejected", "timestamp": "2026-04-27T01:37:46.334688", "owner": "Alice", "pet": "Max", "reason": "Rejected by user"}
+{"event": "plan_generated", "timestamp": "2026-04-27T01:39:28.470962", "owner": "Alice", "pet": "Max", "method": "ai_agent", "plan_summary": {"total_duration": 40, "task_count": 2, "conflicts": 0}}
+{"event": "plan_validated", "timestamp": "2026-04-27T01:39:28.471892", "owner": "Alice", "pet": "Max", "validation": {"is_valid": true, "severity": "info", "errors": [], "warnings": [], "checks_passed": 6, "checks_total": 6, "timestamp": "2026-04-27T01:39:28.463794"}}
+{"event": "plan_approved", "timestamp": "2026-04-27T01:39:28.473010", "owner": "Alice", "pet": "Max", "plan_id": "4e857d90"}

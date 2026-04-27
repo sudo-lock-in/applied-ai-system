@@ -139,7 +139,7 @@ pytest tests/test_pawpal.py -v -s
 
 ## Sample Interactions
 
-### <a href="https://www.loom.com/share/b000d6b6f1834d228e0ce6e2032263a0">Video Walkthrough</a>
+### <a href="https://www.loom.com/share/aa15d2acbd64459fbb8ba1b0764eed94">Video Walkthrough</a>
 
 ### Example 1: Setting Up Owner & Pets
 
