@@ -117,3 +117,7 @@
 {"event": "plan_validated", "timestamp": "2026-04-26T12:02:16.828769", "owner": "Jordan", "pet": "Mochi", "validation": {"is_valid": true, "severity": "info", "errors": [], "warnings": [], "checks_passed": 6, "checks_total": 6, "timestamp": "2026-04-26T12:02:16.821436"}}
 {"event": "plan_approved", "timestamp": "2026-04-26T12:02:16.829567", "owner": "Jordan", "pet": "Mochi", "plan_id": "6527f6f4"}
 {"event": "plan_rejected", "timestamp": "2026-04-26T17:15:26.885917", "owner": "Jordan", "pet": "Mochi", "reason": "Rejected by user"}
+{"event": "plan_generated", "timestamp": "2026-04-26T22:34:28.145613", "owner": "Alice", "pet": "Max", "method": "ai_agent", "plan_summary": {"total_duration": 110, "task_count": 4, "conflicts": 0}}
+{"event": "plan_validated", "timestamp": "2026-04-26T22:34:28.160140", "owner": "Alice", "pet": "Max", "validation": {"is_valid": true, "severity": "info", "errors": [], "warnings": [], "checks_passed": 6, "checks_total": 6, "timestamp": "2026-04-26T22:34:28.132246"}}
+{"event": "plan_approved", "timestamp": "2026-04-26T22:34:28.162986", "owner": "Alice", "pet": "Max", "plan_id": "9f9560ff"}
+{"event": "plan_rejected", "timestamp": "2026-04-26T22:35:41.890816", "owner": "Alice", "pet": "Max", "reason": "Rejected by user"}
