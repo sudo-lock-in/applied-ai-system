@@ -129,6 +129,17 @@ with main_tabs[1]:
     st.header("🚀 Generate AI-Powered Schedule")
     
     if st.session_state.pets:
+        # Mode selector
+        st.subheader("⚙️ Scheduling Mode")
+        mode = st.radio(
+            "Choose scheduling mode:",
+            ["Deterministic", "Ollama (Agentic Loop)"],
+            index=0,
+            help="Deterministic: Fast, predictable (no LLM)\nOllama (Agentic): Local LLM with plan-act-check-refine loop"
+        )
+        
+        st.divider()
+        
         col1, col2 = st.columns([3, 1])
         
         with col1:
@@ -146,17 +157,23 @@ with main_tabs[1]:
                 scheduler_ai = st.session_state.schedulers[selected_pet_ai]
                 
                 if scheduler_ai.get_tasks():
-                    agent = SchedulingAgent()
+                    use_ollama = (mode == "Ollama (Agentic Loop)")
+                    agent = SchedulingAgent(use_ollama=use_ollama, max_iterations=3)
                     start_time = owner.preferred_start_time
                     end_time_minutes = (datetime.strptime(start_time, "%H:%M") + timedelta(minutes=owner.available_minutes)).time()
                     end_time = end_time_minutes.strftime("%H:%M")
                     
-                    plan = agent.generate_schedule(owner, pet_for_ai, scheduler_ai, start_time=start_time, end_time=end_time)
+                    with st.spinner(f"⏳ Generating schedule ({mode})..."):
+                        plan = agent.generate_schedule(owner, pet_for_ai, scheduler_ai, start_time=start_time, end_time=end_time)
                     
                     st.session_state.current_plan = plan
                     st.session_state.current_scheduler_ai = scheduler_ai
                     st.session_state.current_pet_ai = pet_for_ai
-                    st.success("✅ Schedule generated!")
+                    
+                    if use_ollama and not agent.ollama_available:
+                        st.warning(f"⚠️ Ollama not available. Used deterministic mode instead.\nStart Ollama: ollama serve")
+                    
+                    st.success(f"✅ Schedule generated! (Method: {plan.generation_method}, Iterations: {plan.iterations})")
                 else:
                     st.warning("⚠️ Add tasks to the pet first!")
         
@@ -168,8 +185,25 @@ with main_tabs[1]:
             st.divider()
             st.markdown("## 📋 Generated Schedule")
             
+            # Show generation details
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Method", plan.generation_method)
+            with col2:
+                st.metric("Iterations", plan.iterations)
+            with col3:
+                status = "✅ Valid" if plan.is_validated else "⚠️ Unvalidated"
+                st.metric("Status", status)
+            with col4:
+                st.metric("Tasks", len(plan.scheduled_tasks))
+            
             with st.expander("💭 AI Reasoning", expanded=True):
                 st.markdown(plan.explanation)
+            
+            if plan.refinement_history and plan.iterations > 1:
+                with st.expander(f"🔄 Refinement History ({len(plan.refinement_history)} feedback items)"):
+                    for i, feedback in enumerate(plan.refinement_history, 1):
+                        st.text(f"{i}. {feedback}")
             
             if plan.scheduled_tasks:
                 st.markdown("**Scheduled Tasks:**")

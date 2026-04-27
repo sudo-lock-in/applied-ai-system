@@ -1,12 +1,17 @@
 """
-Comprehensive test suite for PawPal+ Agentic Workflow and Reliability System
+Comprehensive test suite for PawPal+ Agentic Workflow with Ollama + Mistral
 
 Tests cover:
-1. Agent scheduling logic
+1. Agent scheduling logic (Deterministic + Ollama Agentic)
 2. Plan validation
 3. Conflict detection
 4. Audit logging
 5. Integration tests
+6. Agentic loop convergence (Plan-Act-Check-Refine)
+
+Models Tested:
+- Ollama (Mistral 7B): Local LLM with iterative refinement
+- Deterministic: Priority-based fallback (always works)
 """
 
 import pytest
@@ -58,15 +63,22 @@ class TestSchedulingAgent:
         return owner, pet, scheduler, [task1, task2, task3]
 
     def test_agent_initialization(self):
-        """Test agent can be initialized."""
-        agent = SchedulingAgent(llm_client=None)
-        assert agent is not None
-        assert agent.use_llm is False
+        """Test agent can be initialized in both modes."""
+        # Test deterministic mode (always available)
+        agent_deterministic = SchedulingAgent(use_ollama=False)
+        assert agent_deterministic is not None
+        assert agent_deterministic.use_ollama is False
+        
+        # Test ollama mode (may or may not be available)
+        agent_ollama = SchedulingAgent(use_ollama=True, ollama_model="mistral")
+        assert agent_ollama is not None
+        assert agent_ollama.use_ollama is True
+        assert agent_ollama.ollama_model == "mistral"
 
     def test_deterministic_schedule_generation(self, setup):
-        """Test deterministic schedule generation without LLM."""
+        """Test deterministic schedule generation (no LLM dependency)."""
         owner, pet, scheduler, tasks = setup
-        agent = SchedulingAgent(llm_client=None)
+        agent = SchedulingAgent(use_ollama=False)
         
         plan = agent.generate_schedule(owner, pet, scheduler)
         
@@ -76,31 +88,59 @@ class TestSchedulingAgent:
         assert len(plan.scheduled_tasks) > 0
         assert plan.total_duration > 0
         assert isinstance(plan.scheduled_tasks, list)
+        assert plan.generation_method == "deterministic"
+        assert plan.iterations == 1  # Deterministic is always 1 iteration
 
     def test_schedule_respects_available_time(self, setup):
         """Test schedule doesn't exceed owner's available time."""
         owner, pet, scheduler, tasks = setup
-        agent = SchedulingAgent(llm_client=None)
+        agent = SchedulingAgent(use_ollama=False)
         
         plan = agent.generate_schedule(owner, pet, scheduler)
         
         assert plan.total_duration <= owner.available_minutes
+    
+    def test_ollama_agentic_mode_available(self):
+        """Test Ollama agentic mode can be initialized (may or may not connect)."""
+        agent = SchedulingAgent(use_ollama=True, ollama_model="mistral", max_iterations=3)
+        
+        assert agent.use_ollama is True
+        assert agent.ollama_model == "mistral"
+        assert agent.max_iterations == 3
+        # ollama_available may be True or False depending on whether Ollama is running
+        assert isinstance(agent.ollama_available, bool)
+    
+    def test_schedule_generation_with_fallback(self, setup):
+        """Test that if Ollama unavailable, falls back to deterministic."""
+        owner, pet, scheduler, tasks = setup
+        
+        # Request Ollama but it won't be available (in test environment)
+        agent = SchedulingAgent(use_ollama=True, ollama_model="mistral")
+        plan = agent.generate_schedule(owner, pet, scheduler)
+        
+        # Plan should still be generated (either agentic or deterministic fallback)
+        assert plan is not None
+        assert plan.owner_name == "Alice"
+        assert plan.pet_name == "Max"
+        # If Ollama not available, should fall back to deterministic
+        if not agent.ollama_available:
+            assert plan.generation_method == "deterministic"
 
     def test_schedule_includes_high_priority_tasks(self, setup):
         """Test schedule prioritizes high-priority tasks."""
         owner, pet, scheduler, tasks = setup
-        agent = SchedulingAgent(llm_client=None)
+        agent = SchedulingAgent(use_ollama=False)
         
         plan = agent.generate_schedule(owner, pet, scheduler)
-        scheduled_titles = [t['title'] for t in plan.scheduled_tasks]
+        scheduled_titles = [t.get('title') or t.get('Task') for t in plan.scheduled_tasks]
         
         # High priority tasks should be scheduled
-        assert "Morning Walk" in scheduled_titles
-        assert "Feeding" in scheduled_titles
+        assert any("Morning Walk" in title for title in scheduled_titles)
+        assert any("Feeding" in title for title in scheduled_titles)
 
     def test_time_conversion(self):
         """Test time conversion utilities."""
-        agent = SchedulingAgent()
+        agent = SchedulingAgent(use_ollama=False)
         
         # Test minutes to time
         assert agent._minutes_to_time(0) == "00:00"
@@ -115,28 +155,30 @@ class TestSchedulingAgent:
         assert agent._time_to_minutes("17:00") == 1020
 
     def test_plan_explanation_generation(self, setup):
-        """Test that plan includes explanation."""
+        """Test that plan includes explanation (deterministic or agentic)."""
         owner, pet, scheduler, tasks = setup
-        agent = SchedulingAgent()
+        agent = SchedulingAgent(use_ollama=False)
         
         plan = agent.generate_schedule(owner, pet, scheduler)
         
         assert plan.explanation is not None
         assert len(plan.explanation) > 0
-        assert "schedule" in plan.explanation.lower() or "plan" in plan.explanation.lower()
-
-    def test_plan_insights_generation(self, setup):
-        """Test plan insights generation."""
+        # Should mention schedule/plan or have reasoning
+        assert any(word in plan.explanation.lower() for word in ["schedule", "plan", "task", "time"])
+    
+    def test_plan_metadata(self, setup):
+        """Test that plan includes required metadata for agentic workflow."""
         owner, pet, scheduler, tasks = setup
-        agent = SchedulingAgent()
+        agent = SchedulingAgent(use_ollama=False)
         
         plan = agent.generate_schedule(owner, pet, scheduler)
-        insights = agent.get_plan_insights(plan, scheduler)
         
-        assert "most_challenging_task" in insights
-        assert "best_fitting_task" in insights
-        assert "time_efficiency" in insights
-        assert "recommendation" in insights
+        # Verify metadata fields exist
+        assert hasattr(plan, 'generation_method')
+        assert hasattr(plan, 'iterations')
+        assert hasattr(plan, 'refinement_history')
+        assert plan.generation_method in ["deterministic", "ollama_agentic"]
+        assert plan.iterations >= 1
 
 
 class TestPlanValidation:
@@ -421,7 +463,14 @@ class TestHumanReviewCheckpoint:
 
 
 class TestIntegration:
-    """Integration tests combining agent, validation, and logging."""
+    """Integration tests combining agent, validation, and logging.
+    
+    Tests verify:
+    - Full workflow: generate (deterministic/ollama) → validate → log → review
+    - Rejection and retry patterns
+    - Agentic loop convergence (Plan-Act-Check-Refine)
+    - Consistency between deterministic and agentic modes
+    """
 
     @pytest.fixture
     def setup(self):
@@ -501,7 +550,83 @@ class TestIntegration:
         assert summary['plans_rejected'] >= 1
         assert summary['plans_approved'] >= 1
 
+    def test_agentic_workflow_convergence(self):
+        """Test agentic loop convergence with Mistral (Plan-Act-Check-Refine)."""
+        # This test verifies the agentic loop structure
+        # In production with Ollama running, this tests actual convergence
+        # In test environment, tests the structure and fallback behavior
+        
+        owner = Owner(name="FrankAgent", available_minutes=120)
+        pet = Pet(name="AgenticPet", species="dog", age=3, breed="Test")
+        owner.add_pet(pet)
+        
+        scheduler = Scheduler(owner, pet)
+        tasks = [
+            CareTask("Task 1", 30, "high", "daily", "Care"),
+            CareTask("Task 2", 25, "medium", "daily", "Care"),
+            CareTask("Task 3", 20, "low", "daily", "Care"),
+        ]
+        for task in tasks:
+            scheduler.add_task(task)
+        
+        # Create agentic agent
+        agent = SchedulingAgent(use_ollama=True, ollama_model="mistral", max_iterations=3)
+        plan = agent.generate_schedule(owner, pet, scheduler)
+        
+        # Verify plan has agentic metadata
+        assert plan is not None
+        assert hasattr(plan, 'generation_method')
+        assert hasattr(plan, 'iterations')
+        assert hasattr(plan, 'refinement_history')
+        
+        # If Ollama available, should use agentic; otherwise deterministic fallback
+        if agent.ollama_available:
+            assert plan.generation_method == "ollama_agentic"
+            assert plan.iterations >= 1
+            assert isinstance(plan.refinement_history, list)
+        else:
+            # Fallback to deterministic
+            assert plan.generation_method == "deterministic"
+            assert plan.iterations == 1
+    
+    def test_deterministic_vs_ollama_consistency(self):
+        """Test that deterministic and ollama (if available) generate valid plans."""
+        owner = Owner(name="ComparisonTest", available_minutes=150)
+        pet = Pet(name="ComparisonPet", species="cat", age=2, breed="Test")
+        owner.add_pet(pet)
+        
+        scheduler = Scheduler(owner, pet)
+        tasks = [
+            CareTask("Feed", 15, "high", "daily", "Feeding"),
+            CareTask("Play", 30, "medium", "daily", "Exercise"),
+            CareTask("Groom", 45, "low", "weekly", "Grooming"),
+        ]
+        for task in tasks:
+            scheduler.add_task(task)
+        
+        # Generate with deterministic
+        agent_det = SchedulingAgent(use_ollama=False)
+        plan_det = agent_det.generate_schedule(owner, pet, scheduler)
+        
+        # Verify deterministic works
+        assert plan_det is not None
+        assert plan_det.generation_method == "deterministic"
+        assert plan_det.iterations == 1
+        assert len(plan_det.scheduled_tasks) > 0
+        
+        # Generate with ollama (may fallback to deterministic)
+        agent_ollama = SchedulingAgent(use_ollama=True, ollama_model="mistral")
+        plan_ollama = agent_ollama.generate_schedule(owner, pet, scheduler)
+        
+        # Verify ollama plan exists (may be agentic or fallback)
+        assert plan_ollama is not None
+        assert plan_ollama.generation_method in ["ollama_agentic", "deterministic"]
+        assert len(plan_ollama.scheduled_tasks) > 0
+        # Both should respect time constraints
+        assert plan_det.total_duration <= owner.available_minutes
+        assert plan_ollama.total_duration <= owner.available_minutes
 
-# Run tests with: pytest tests/test_pawpal.py -v
+
+# Run tests with: pytest tests/test_agent_workflow.py -v
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

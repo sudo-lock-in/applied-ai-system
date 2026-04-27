@@ -1,15 +1,20 @@
 """
-Agentic Scheduling Workflow for PawPal+
+Agentic Scheduling Workflow for PawPal+ with Ollama
 
-This module implements an intelligent scheduling agent that uses an LLM to:
-1. Analyze pet care needs and owner constraints
-2. Generate optimal schedules with reasoning
-3. Provide explanations for scheduling decisions
-4. Adapt plans based on conflicts and feedback
+This module implements a true agentic workflow:
+1. PLAN: Generate schedule with reasoning
+2. ACT: Create the schedule
+3. CHECK: Validate against constraints
+4. REFINE: If invalid, send feedback to LLM and regenerate
+5. REPEAT: Loop until valid or max iterations reached
+
+Uses Ollama for free, local LLM inference (no API costs).
 """
 
 import json
-from dataclasses import dataclass
+import os
+import requests
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 from pawpal_system import CareTask, Pet, Owner, Scheduler
@@ -27,6 +32,9 @@ class SchedulePlan:
     timestamp: datetime
     is_validated: bool = False
     validation_warnings: list[str] = None
+    generation_method: str = "deterministic"  # "deterministic" or "ollama_agentic"
+    iterations: int = 1  # Number of refinement iterations
+    refinement_history: list[str] = field(default_factory=list)  # Track feedback
 
     def __post_init__(self):
         if self.validation_warnings is None:
@@ -81,25 +89,50 @@ class SchedulePlan:
 
 class SchedulingAgent:
     """
-    Intelligent scheduling agent that plans pet care tasks.
+    Intelligent scheduling agent with agentic refinement loop.
     
-    This agent:
-    - Analyzes constraints (owner time, pet needs, priorities)
-    - Generates optimized schedules
-    - Provides reasoning for decisions
-    - Validates against conflicts and constraints
+    AGENTIC WORKFLOW:
+    1. PLAN - Generate schedule with LLM or deterministic algorithm
+    2. ACT - Create the schedule
+    3. CHECK - Validate against 4 critical constraints
+    4. REFINE - If invalid, send errors back to LLM
+    5. REPEAT - Loop until valid or max iterations reached
     """
 
-    def __init__(self, llm_client=None):
+    def __init__(self, use_ollama: bool = False, max_iterations: int = 3, ollama_url: str = None, ollama_model: str = None):
         """
         Initialize the scheduling agent.
         
         Args:
-            llm_client: Optional LLM client (e.g., Anthropic, OpenAI)
-                       If None, uses deterministic fallback algorithm
+            use_ollama: If True, use Ollama for agentic loop; if False, use deterministic
+            max_iterations: Max refinement iterations (default 3)
+            ollama_url: Ollama server URL (default http://localhost:11434)
+            ollama_model: Ollama model to use (default mistral - fast & free)
         """
-        self.llm_client = llm_client
-        self.use_llm = llm_client is not None
+        self.use_ollama = use_ollama
+        self.max_iterations = max_iterations
+        self.ollama_url = ollama_url or os.getenv("OLLAMA_URL", "http://localhost:11434")
+        self.ollama_model = ollama_model or os.getenv("OLLAMA_MODEL", "mistral")
+        self.ollama_available = False
+        
+        if self.use_ollama:
+            self._check_ollama_connection()
+    
+    def _check_ollama_connection(self):
+        """Check if Ollama is available."""
+        try:
+            response = requests.get(f"{self.ollama_url}/api/tags", timeout=2)
+            if response.status_code == 200:
+                print(f"✅ Ollama available at {self.ollama_url}")
+                self.ollama_available = True
+            else:
+                print(f"⚠️ Ollama not responding properly at {self.ollama_url}")
+        except requests.exceptions.ConnectionError:
+            print(f"⚠️ Cannot connect to Ollama at {self.ollama_url}")
+            print(f"   Start Ollama with: ollama serve")
+            print(f"   Download model with: ollama pull {self.ollama_model}")
+        except Exception as e:
+            print(f"⚠️ Ollama check failed: {e}")
 
     def generate_schedule(
         self,
@@ -112,6 +145,8 @@ class SchedulingAgent:
         """
         Generate an optimized schedule for a pet.
         
+        Routes to agentic workflow if Ollama is available, otherwise deterministic.
+        
         Args:
             owner: Pet owner with constraints and preferences
             pet: Pet to schedule tasks for
@@ -123,11 +158,99 @@ class SchedulingAgent:
             SchedulePlan with scheduled tasks and reasoning
         """
         
-        if self.use_llm:
-            return self._generate_schedule_with_llm(
+        if self.use_ollama and self.ollama_available:
+            return self._generate_schedule_agentic_loop(
                 owner, pet, scheduler, start_time, end_time
             )
         else:
+            return self._generate_schedule_deterministic(
+                owner, pet, scheduler, start_time, end_time
+            )
+
+    def _generate_schedule_agentic_loop(
+        self,
+        owner: Owner,
+        pet: Pet,
+        scheduler: Scheduler,
+        start_time: str,
+        end_time: str
+    ) -> SchedulePlan:
+        """
+        AGENTIC LOOP: Plan → Act → Check → Refine → Repeat
+        
+        1. PLAN: Generate schedule with Ollama
+        2. ACT: Create schedule structure
+        3. CHECK: Validate against constraints
+        4. REFINE: If invalid, send errors to Ollama
+        5. REPEAT: Up to max_iterations times
+        """
+        print(f"\n🤖 Starting agentic loop (max {self.max_iterations} iterations)...")
+        
+        refinement_history = []
+        current_plan = None
+        
+        for iteration in range(1, self.max_iterations + 1):
+            print(f"\n📍 Iteration {iteration}/{self.max_iterations}")
+            
+            # PLAN: Generate schedule
+            if iteration == 1:
+                print("   📋 PLAN: Generating initial schedule...")
+                prompt = self._prepare_schedule_prompt(owner, pet, scheduler, start_time, end_time)
+            else:
+                print(f"   🔄 REFINE: Regenerating with feedback...")
+                prompt = self._prepare_refinement_prompt(
+                    owner, pet, scheduler, start_time, end_time, refinement_history
+                )
+            
+            # ACT: Call Ollama
+            print("   ⚙️  ACT: Calling Ollama...")
+            try:
+                response = self._call_ollama(prompt)
+                current_plan = self._parse_ollama_response(response, owner, pet)
+            except Exception as e:
+                print(f"   ❌ Ollama call failed: {e}")
+                if iteration == 1:
+                    print("   ↩️  Falling back to deterministic scheduling.")
+                    return self._generate_schedule_deterministic(
+                        owner, pet, scheduler, start_time, end_time
+                    )
+                else:
+                    print(f"   ⚠️  Keeping plan from iteration {iteration - 1}")
+                    break
+            
+            # CHECK: Validate the plan
+            print("   ✅ CHECK: Validating plan...")
+            is_valid, warnings = self._validate_schedule(current_plan, owner, scheduler)
+            current_plan.is_validated = is_valid
+            
+            if is_valid:
+                print(f"   🎉 Plan valid! Success in {iteration} iteration(s).")
+                current_plan.generation_method = "ollama_agentic"
+                current_plan.iterations = iteration
+                current_plan.refinement_history = refinement_history
+                return current_plan
+            else:
+                # REFINE: Prepare feedback for next iteration
+                print(f"   ⚠️  Plan invalid. {len(warnings)} issues found:")
+                for warning in warnings:
+                    print(f"      - {warning}")
+                    refinement_history.append(warning)
+                
+                if iteration >= self.max_iterations:
+                    print(f"   🛑 Max iterations reached. Returning best plan.")
+                    current_plan.generation_method = "ollama_agentic"
+                    current_plan.iterations = iteration
+                    current_plan.refinement_history = refinement_history
+                    return current_plan
+        
+        # Fallback in case loop exits unexpectedly
+        if current_plan:
+            current_plan.generation_method = "ollama_agentic"
+            current_plan.iterations = self.max_iterations
+            current_plan.refinement_history = refinement_history
+            return current_plan
+        else:
+            print("   ❌ Could not generate schedule. Falling back to deterministic.")
             return self._generate_schedule_deterministic(
                 owner, pet, scheduler, start_time, end_time
             )
@@ -494,3 +617,139 @@ For {pet.name}, I've created a schedule that maximizes care quality while respec
             "total_tasks": len(plan.scheduled_tasks),
             "total_duration": plan.total_duration
         }
+
+    def _call_ollama(self, prompt: str) -> str:
+        """Call Ollama local LLM and return response."""
+        try:
+            response = requests.post(
+                f"{self.ollama_url}/api/generate",
+                json={
+                    "model": self.ollama_model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "temperature": 0.7,
+                },
+                timeout=300  # 5 minutes - mistral is faster but still substantial
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result.get("response", "").strip()
+        except requests.exceptions.Timeout:
+            raise TimeoutError(f"Ollama timeout at {self.ollama_url} (model may be loading - try again)")
+        except requests.exceptions.ConnectionError:
+            raise ConnectionError(f"Cannot connect to Ollama at {self.ollama_url}")
+        except Exception as e:
+            raise RuntimeError(f"Ollama error: {e}")
+
+    def _prepare_schedule_prompt(self, owner: Owner, pet: Pet, scheduler: Scheduler, start_time: str, end_time: str) -> str:
+        """Create prompt for initial schedule generation."""
+        tasks_desc = "\n".join([
+            f"- {t.title}: {t.duration_minutes}min ({t.priority})"
+            for t in scheduler.get_tasks()
+        ])
+        
+        return f"""Create a pet care schedule.
+
+PET: {pet.name} ({pet.species})
+TIME: {start_time} to {end_time} ({owner.available_minutes} min available)
+TASKS:
+{tasks_desc}
+
+Schedule these tasks in order (HIGH priority first). Respond with JSON:
+{{"scheduled_tasks": [{{"title": "Task", "start_time": "HH:MM", "end_time": "HH:MM"}}], "explanation": "Why"}}"""
+
+    def _prepare_refinement_prompt(self, owner: Owner, pet: Pet, scheduler: Scheduler, start_time: str, end_time: str, errors: list[str]) -> str:
+        """Create prompt for schedule refinement based on validation errors."""
+        tasks_desc = "\n".join([
+            f"- {t.title}: {t.duration_minutes}min ({t.priority})"
+            for t in scheduler.get_tasks()
+        ])
+        
+        errors_desc = "\n".join([f"- {error}" for error in errors])
+        
+        return f"""Fix the schedule. Issues:
+{errors_desc}
+
+PET: {pet.name}
+TIME: {start_time} to {end_time} ({owner.available_minutes} min)
+TASKS:
+{tasks_desc}
+
+Respond with fixed JSON:
+{{"scheduled_tasks": [{{"title": "Task", "start_time": "HH:MM", "end_time": "HH:MM"}}], "explanation": "Fixed issues"}}"""
+
+    def _parse_ollama_response(self, response: str, owner: Owner, pet: Pet) -> SchedulePlan:
+        """Parse Ollama's JSON response into a SchedulePlan."""
+        try:
+            # Extract JSON from response (may have extra text)
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                json_str = response[json_start:json_end]
+                data = json.loads(json_str)
+            else:
+                raise ValueError("No JSON found in response")
+            
+            scheduled_tasks = data.get("scheduled_tasks", [])
+            explanation = data.get("explanation", "No explanation provided")
+            
+            # Calculate total duration
+            total_duration = sum(self._time_delta_minutes(t.get("start_time", "00:00"), t.get("end_time", "00:00")) for t in scheduled_tasks)
+            
+            return SchedulePlan(
+                owner_name=owner.name,
+                pet_name=pet.name,
+                scheduled_tasks=scheduled_tasks,
+                total_duration=total_duration,
+                conflicts_detected=[],
+                explanation=explanation,
+                timestamp=datetime.now(),
+                is_validated=False,
+                generation_method="ollama_agentic",
+                iterations=1
+            )
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse Ollama response as JSON: {e}\nResponse: {response}")
+
+    def _validate_schedule(self, plan: SchedulePlan, owner: Owner, scheduler: Scheduler) -> tuple[bool, list[str]]:
+        """Validate schedule and return (is_valid, list_of_warnings)."""
+        warnings = []
+        
+        # Check 1: Total duration
+        if plan.total_duration > owner.available_minutes:
+            warnings.append(
+                f"Total duration ({plan.total_duration}m) exceeds available time ({owner.available_minutes}m)"
+            )
+        
+        # Check 2: Conflicts (overlapping times)
+        for i, task1 in enumerate(plan.scheduled_tasks):
+            for task2 in plan.scheduled_tasks[i+1:]:
+                t1_start = self._time_to_minutes(task1["start_time"])
+                t1_end = self._time_to_minutes(task1["end_time"])
+                t2_start = self._time_to_minutes(task2["start_time"])
+                t2_end = self._time_to_minutes(task2["end_time"])
+                
+                if not (t1_end <= t2_start or t2_end <= t1_start):
+                    warnings.append(f"Time conflict: {task1['title']} overlaps with {task2['title']}")
+        
+        # Check 3: High priority tasks included
+        high_priority = [t for t in scheduler.get_tasks() if t.priority == "high"]
+        scheduled_titles = [t["title"] for t in plan.scheduled_tasks]
+        for task in high_priority:
+            if task.title not in scheduled_titles:
+                warnings.append(f"High-priority task missing: {task.title}")
+        
+        # Check 4: Daily tasks included
+        daily_tasks = [t for t in scheduler.get_tasks() if t.frequency == "daily"]
+        for task in daily_tasks:
+            if task.title not in scheduled_titles:
+                warnings.append(f"Daily task missing: {task.title}")
+        
+        is_valid = len(warnings) == 0
+        return is_valid, warnings
+
+    def _time_delta_minutes(self, start_time: str, end_time: str) -> int:
+        """Calculate minutes between two times."""
+        start_min = self._time_to_minutes(start_time)
+        end_min = self._time_to_minutes(end_time)
+        return max(0, end_min - start_min)
